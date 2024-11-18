@@ -14,7 +14,7 @@ def process_ecg():
     ecg_df = pd.read_csv(ecg_csv, skiprows=1, header=None)
     ecg_activity = ecg_df[ecg_df.columns[0]]
     ecg_timestamp = round(ecg_df[ecg_df.columns[1]], 2)# Round time to two dp
-    ecg_entries = ecg_activity[500:] # Change number to match entries made every 5 seconds
+    ecg_entries = ecg_activity[300:] # Change number to match entries made every 5 seconds
     
     # Convert ecg_entries to a numerical array
     ecg_entries = pd.to_numeric(ecg_entries, errors='coerce')
@@ -36,7 +36,7 @@ def process_rr():
     rr_df = pd.read_csv(rr_csv,skiprows=1, header=None)
     rr_rate = rr_df[rr_df.columns[0]]
     rr_timestamp = round(rr_df[rr_df.columns[1]], 2) # Round time to two dp
-    rr_entries = rr_rate[100:] # Change number to match entries made every 5 seconds
+    rr_entries = rr_rate[50:] # Change number to match entries made every 5 seconds
     
     rr_entries = pd.to_numeric(rr_entries, errors='coerce')
     
@@ -56,7 +56,7 @@ def main():
 
     while(True):
         # while running, wait 5 seconds before running everything
-        
+        time.sleep(5)
         
         # Reads csv files and collects the ecg activity and timestamp in own location (Run as co-routines)
         
@@ -67,8 +67,7 @@ def main():
         # Save to seperate csv files
         ecg_dataframe.to_csv("/output/ecg_output.csv")
         rr_dataframe.to_csv("/output/rr_output.csv")
-        
-        time.sleep(5)
+
         
         # If key is pressed, quit program
         if keyboard.is_pressed('P'):
