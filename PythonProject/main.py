@@ -8,109 +8,64 @@ import logging
 
 # Save File locations into string
 ecg_csv= "bioharness/bin/Debug/netcoreapp3.1/Experiment/Session/ecgLog.csv"
-rr_csv= "bioharness/bin/Debug/netcoreapp3.1/Experiment/Session/breathingLog.csv"
+rsp_csv= "bioharness/bin/Debug/netcoreapp3.1/Experiment/Session/breathingLog.csv"
 
-# Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+collected_df = df = pd.DataFrame(columns=['ECG RMSSD', 'RSP Rate'])
 
-def process_ecg():
-    try:
-        # Opens csv and reads columns within the csv
-        ecg_df = pd.read_csv(ecg_csv, skiprows=[0], skipfooter=[-1], header=None)
-        
-        if ecg_df.empty:
-            logging.error("ECG DataFrame is empty.")
-            return None
-
-        ecg_activity = ecg_df[ecg_df.columns[0]].tolist()
-        ecg_timestamp = round(ecg_df[ecg_df.columns[1]], 2)
-        
-        ecg_activity = pd.to_numeric(ecg_activity, errors='coerce')
-        
-        ecg_entries = ecg_activity[-2500:] # Change number to match entries made every 5 seconds
-
-
-        # Convert ECG activity to numpy array
-        ecg_entries = np.array(ecg_activity[-2500:])
-        
-        # Drop empty elements
-        ecg_entries = ecg_entries[~np.isnan(ecg_entries)]
-        
-        # Default processing pipeline
-        signals, info = nk.ecg_process(ecg_entries, sampling_rate=250)
-        
-        peaks, info = nk.ecg_peaks(ecg_entries, sampling_rate=250)
-        
-        hrv_time = nk.hrv_time(peaks, sampling_rate=250, show=True)
-        
-        if 'HRV_RMSSD' in hrv_time:
-            rmssd = hrv_time['HRV_RMSSD']
-        else:
-            logging.warning("HRV RMSSD could not be calculated.")
-            return None
-        
-        logging.info(f"HRV RMSSD: {hrv_time['HRV_RMSSD']}")
-        
-    except Exception as e:
-        logging.error(f"Error in process_ecg: {str(e)}")
-        return None
+def process_data():
+    # Read in csv's and turn them into numpy arrays
+    ecg_df = pd.read_csv(ecg_csv, skipheader=1, skipfooter=1, header=None, engine='python')
+    rsp_df = pd.read_csv(rsp_csv, skipheader=1, skipfooter=1, header=None, engine='python')
     
-    # Creating Dataframes
-    ecg_dataframe = pd.DataFrame({'HRV RMSSD': rmssd,
-                                  'HRV RMSSD Timestamp': ecg_timestamp})
-
-    return ecg_dataframe
+    # Get activity columns from rsp and ECG
+    ecg_data = ecg_df[ecg_data.columns[0]]
+    rsp_data = rsp_df[rsp_data.columns[0]]
     
-def process_rr():
-    rr_df = pd.read_csv(rr_csv,skiprows=1, header=None)
-
-    rr_rate = rr_df[rr_df.columns[0]]
-    rr_timestamp = round(rr_df[rr_df.columns[1]], 2) # Round time to two dp
-    rr_entries = rr_rate[-50:] # Change number to match entries made every 5 seconds
+    ecg_timestamp = ecg_df[ecg_data.columns[1]]
+    rsp_timestamp = rsp_df[rsp_data.columns[1]]
     
-    rr_entries = pd.to_numeric(rr_entries, errors='coerce')
+    ecg_extrated_entries = ecg_data[-5000:]
+    rsp_extracted_entries = rsp_data[-2000:]
     
-    # Drop empty element
-    rr_entries = rr_entries.dropna(inplace=True)
-
+    # Turn into numpy arrays
+    ecg_extracted_entries = pd.to_numeric(ecg_extrated_entries)
+    rsp_extracted_entries = pd.to_numeric(rsp_extracted_entries)
     
-    print(rr_entries)
+    # Clean signals
+    ecg_cleaned_entries = nk.ecg_clean(ecg_extracted_entries, sampling_rate=1000)
+    rsp_cleaned_entries = nk.rsp_clean(rsp_extracted_entries, sampling_rate=25)
     
-    # signals, info = nk.rsp_process(rr_entries, sampling_rate=100)
+    # Process signals
+    ecg_signals = nk.ecg_process(ecg_cleaned_entries, sampling_rate=1000)
+    rsp_signals = nk.rsp_process(rsp_cleaned_entries, sampling_rate=25)
     
-    # rav = nk.rsp_rav(signals['RSP_Amplitude'], peaks=signals['RSP_Peaks'])
-     
-    # # Creating Dataframes
-    # rr_dataframe = pd.DataFrame({'RR Rate': rr_rate, 
-    #                               'RR Rate Timestamp' : rr_timestamp})
-
-    # return rr_dataframe
-
+    # get hrv
+    ecg_hrv = nk.hrv(ecg_signals, sampling_rate=1000)
+    ecg_RMSSD = ['HRV'] # Extracts RMSSD from hrv
+    
+    # get rsp rate
+    rsp_rate = rsp_signals['rsp_rate']
+    
+    # Return ecg and rsp data to be turned into csv file
+    return ecg_RMSSD, rsp_rate
+    
+def data_to_dataframes(ecg_RMSSD, rsp_rate):
+    # Collect data and collate in correct format
+    temp_data = {'ECG RMSSD' : [ecg_RMSSD],
+                'RSP Rate' : [rsp_rate]}
+    
+    # add to new dataframe
+    collected_df.append(temp_data)
+    
+    # Convert to CSV
+    collected_df.to_csv('output/collected_dataframe.csv')
 
 def main():
-    # Create dir if it isn't made already
-    os.makedirs('output', exist_ok=True)
-
-    while True:
-        # while running, wait 5 seconds before running everything
+    while(True):
         time.sleep(5)
-        
-        try:
-            # Process data and save to dataframes
-            hrv_result = process_ecg()
-            #rr_result = process_rr()
-            
-            if hrv_result:
-                # Save to separate csv files
-                hrv_result.to_csv("output/hrv_output.csv")
-                #rr_result.to_csv("output/rr_output.csv")
-                
-                logging.info("Data processed and saved successfully")
-            else:
-                logging.warning("Failed to process data. Check logs for details.")
-        except Exception as e:
-            logging.error(f"Main loop error: {str(e)}")
-            
+        ecg_RMSSD, rsp_rate = process_data()
+        data_to_dataframes(ecg_RMSSD, rsp_rate)
+
 
 if __name__ == '__main__':
     main()
